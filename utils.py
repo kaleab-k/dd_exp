@@ -15,6 +15,10 @@ import seaborn as sns
 ## Distributions 
 
 def generate_gaussian_parity(n, cov_scale=1, angle_params=None, k=1, acorn=None):
+    """ Generate Gaussian XOR, a mixture of four Gaussians elonging to two classes. 
+    Class 0 consists of negative samples drawn from two Gaussians with means (−1,−1) and (1,1)
+    Class 1 comprises positive samples drawn from the other Gaussians with means (1,−1) and (−1,1) 
+    """
 #     means = [[-1.5, -1.5], [1.5, 1.5], [1.5, -1.5], [-1.5, 1.5]]
     means = [[-1, -1], [1, 1], [1, -1], [-1, 1]]
     blob = np.concatenate(
@@ -41,7 +45,10 @@ def generate_gaussian_parity(n, cov_scale=1, angle_params=None, k=1, acorn=None)
 
 # Model 
 class Net(nn.Module):
-
+    """ DeepNet class
+    A deep net architecture with `n_hidden` layers, 
+    each having `hidden_size` nodes.
+    """
     def __init__(self, in_dim, out_dim, hidden_size=10, n_hidden=2,
                 activation=torch.nn.ReLU(), bias=False, penultimate=False, bn=False):
         super(Net, self).__init__()
@@ -78,6 +85,9 @@ def weight_reset(m):
         m.reset_parameters()
 
 def train_model(model, train_x, train_y, multi_label=False, verbose=False):
+    """ 
+     Train the model given the training data
+    """
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     loss_func = torch.nn.BCEWithLogitsLoss()
     
@@ -100,6 +110,9 @@ def train_model(model, train_x, train_y, multi_label=False, verbose=False):
     return losses
                 
 def get_model(hidden_size=20, n_hidden=5, in_dim=2, out_dim=1, penultimate=False, use_cuda=True, bn=False):
+    """
+     Initialize the model and send to gpu
+    """
     in_dim = in_dim
     out_dim = out_dim #1
     model = Net(in_dim, out_dim, n_hidden=n_hidden, hidden_size=hidden_size,
@@ -112,7 +125,9 @@ def get_model(hidden_size=20, n_hidden=5, in_dim=2, out_dim=1, penultimate=False
 
             
 def get_dataset(N=1000, one_hot=False, cov_scale=1, include_hybrid=False):
-    
+    """
+     Generate the Gaussian XOR dataset and move to gpu
+    """
     use_cuda = torch.cuda.is_available()
     if use_cuda:
         torch.cuda.set_device(0)
@@ -164,6 +179,10 @@ def get_dataset(N=1000, one_hot=False, cov_scale=1, include_hybrid=False):
 
                           
 def run_experiment(depth, iterations, reps=100, width=3, cov_scale=1):
+    """
+     Main function to run the `Increasing Depth` 
+     and `Increasing Width` experiments 
+    """
     result = lambda: None
     
     xx, yy = np.meshgrid(np.arange(-2, 2, 4 / 100), np.arange(-2, 2, 4 / 100))
@@ -175,15 +194,18 @@ def run_experiment(depth, iterations, reps=100, width=3, cov_scale=1):
     train_x, train_y, test_x, test_y, hybrid_sets = get_dataset(N=1000, cov_scale=cov_scale, include_hybrid=True)
     depth = depth
     penultimate_vars_reps = []
+
     for rep in range(reps):#25
+
         print('rep: ' + str(rep))
-        # Shffle train set labels
-        train_y_tmp = torch.clone(train_y)
-        train_y[train_y_tmp==0] = 1
-        train_y[train_y_tmp==1] = 0
-        test_y_tmp = torch.clone(test_y)
-        test_y[test_y_tmp==0] = 1
-        test_y[test_y_tmp==1] = 0
+
+        ## Shffle train set labels for activation variation panel
+        # train_y_tmp = torch.clone(train_y)
+        # train_y[train_y_tmp==0] = 1
+        # train_y[train_y_tmp==1] = 0
+        # test_y_tmp = torch.clone(test_y)
+        # test_y[test_y_tmp==0] = 1
+        # test_y[test_y_tmp==1] = 0
 
         del train_y_tmp
         losses_list = []
@@ -285,22 +307,44 @@ def run_experiment(depth, iterations, reps=100, width=3, cov_scale=1):
 
 # Losses
 def extract_losses(rep_full_list):
-    fl_list = []
+    """
+     Extract and return the metrics from a list of losses
+    """
+    full_loss_list = []
     for losses_list, *_ in rep_full_list:
+    #     eff_dim_arr = np.array([eff_dim(ee, s = 50.) for ee in eigs_list])
         final_loss = [l[-1] for l in losses_list]
-        fl_list.append(final_loss)
 
-    full_loss_list = np.array(fl_list)
+    #     ed_list.append(eff_dim_arr)
+        full_loss_list.append(final_loss)
+
+    full_loss_list = np.array(full_loss_list)
     test_loss_list = np.array([ee[2] for ee in rep_full_list])
     train_loss_list = np.array([ee[1] for ee in rep_full_list])
     test_err_list = np.array([ee[4] for ee in rep_full_list])
     train_err_list = np.array([ee[3] for ee in rep_full_list])
+    briers_list = np.array([ee[5] for ee in rep_full_list])
+    poly_list = np.array([ee[6] for ee in rep_full_list])
+    gini_train = np.array([ee[7] for ee in rep_full_list])
+    gini_test = np.array([ee[8] for ee in rep_full_list])
+    
+    if(len(rep_full_list[0]) > 9):
+        avg_stab = np.array([ee[9] for ee in rep_full_list])
+        # avg_stab = avg_stab
+        bias = avg_stab[:,:,1]
+        var = avg_stab[:,:,2]
+        avg_stab = avg_stab[:,:,0]
 
-    return [full_loss_list, test_loss_list, train_loss_list, test_err_list, train_err_list]
+        return [full_loss_list, test_loss_list, train_loss_list, test_err_list, train_err_list, briers_list, poly_list, gini_train, gini_test, avg_stab, bias, var] 
+    return [full_loss_list, test_loss_list, train_loss_list, test_err_list, train_err_list, briers_list, poly_list, gini_train, gini_test]
+
 
 # Average stability
 def compute_avg_stability(model, hybrid_set):
-    # (train_x, train_y, test_x, test_y, hybrid_sets) = get_dataset(include_hybrid=True)
+    """
+     Compute the average stability of a model 
+     based on https://mlstory.org/generalization.html#algorithmic-stability
+    """
     stab_dif = 0
     N = len(hybrid_set)
     loss_func = torch.nn.BCEWithLogitsLoss()
@@ -321,7 +365,11 @@ def gini_impurity(P1=0, P2=0):
     return(Ginx)
 
 def gini_impurity_mean(polytope_memberships, predicts):
-    
+    """
+     Compute the mean Gini impurity based on
+     the polytope membership of the points and 
+     the model prediction of the labels.
+    """
     gini_mean_score = []
     
     for l in np.unique(polytope_memberships):
@@ -335,7 +383,10 @@ def gini_impurity_mean(polytope_memberships, predicts):
     return np.array(gini_mean_score).mean()
 
 def gini_impurity_list(polytope_memberships, predicts):
-    
+    """
+     Computes the Gini impurity same as above
+     but returns the whole list
+    """
     gini_score = np.zeros(polytope_memberships.shape)
 
     for l in np.unique(polytope_memberships):        
@@ -375,6 +426,11 @@ def pdf(x):
 
 # Polytope functions
 def get_polytopes(model, train_x, penultimate=False):
+    """
+     Returns the polytopes.
+     Points that has same activations values after fed to the model
+      belong to the same polytope.
+    """
     polytope_memberships = []
     last_activations = train_x.cpu().numpy()
     penultimate_act = None
@@ -399,6 +455,9 @@ def get_polytopes(model, train_x, penultimate=False):
     return polytope_memberships, last_activations
 
 def plot_decision_boundaries(model, num_node, num_poly, err, method='contour', depth=True):
+    """
+     Plot the decision boundaries of the model 
+    """
     # create grid to evaluate model
     x_min, x_max = -5,5 
     y_min, y_max = -5,5 
@@ -495,7 +554,11 @@ def plot_decision_boundaries(model, num_node, num_poly, err, method='contour', d
 
 # Plot the result      
 def plot_results(results):
-    
+    """
+     Generate the DeepNet: Increasing Depth vs Increasing Width figure.
+     results should consist the `Increasing Width` and `Increasing Depth` results, respectively.
+    """
+
     sns.set()
     fontsize=20
     ticksize=20
@@ -518,6 +581,7 @@ def plot_results(results):
     for i in range(len(results)):
         result = results[i]
         
+        ## You can choose the panels to display
         # metric_list = [(result.train_err_list, result.test_err_list), (result.train_loss_list, result.test_loss_list), result.penultimate_vars_reps, result.poly_list, result.briers_list, (result.gini_train, result.gini_test), result.avg_stab, result.bias, result.var]
         # metric_ylab = ["Generalization Error", "Cross-Entropy Loss", "Variance of last activation", "Activated regions", "Hellinger distance", "Gini impurity", "Average stability", "Average Bias", "Average Variance"]
         metric_list = [(result.train_loss_list, result.test_loss_list), (result.gini_train, result.gini_test),  result.poly_list, result.avg_stab]
@@ -557,6 +621,10 @@ def plot_results(results):
     plt.savefig('results/DeepNet.pdf', bbox_inches='tight')
 
 
+"""
+  Example to run the `Increasing Depth` vs `Increasing Width` experiments
+  and plot the figure.
+"""
 ## Example
 # result_d = run_experiment(depth=True, iterations=20, reps=1)
 # result_w = run_experiment(depth=False, iterations=70, reps=1)
