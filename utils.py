@@ -11,6 +11,10 @@ import random
 import concurrent.futures
 
 import seaborn as sns
+from sklearn.preprocessing import minmax_scale
+from matplotlib import cm
+
+import os
 
 ## Distributions 
 
@@ -207,7 +211,7 @@ def run_experiment(depth, iterations, reps=100, width=3, cov_scale=1):
         # test_y[test_y_tmp==0] = 1
         # test_y[test_y_tmp==1] = 0
 
-        del train_y_tmp
+        # del train_y_tmp
         losses_list = []
         num_pars = []
         num_poly = []
@@ -227,6 +231,8 @@ def run_experiment(depth, iterations, reps=100, width=3, cov_scale=1):
         penultimate_vars = []
 
         avg_stab_list = []
+        bias_list = []
+        var_list = []
 
         for i in range(1, iterations):
             print('now running', i)
@@ -249,9 +255,9 @@ def run_experiment(depth, iterations, reps=100, width=3, cov_scale=1):
             n_poly = len(np.unique(poly[0]))
 
             if depth:
-                n_nodes = i*20 if i>5 else i*i
+                n_node = i*20 if i>5 else i*i
             else:
-                n_nodes = i*3
+                n_node = i*3
             
             penultimate_acts.append(penultimate_act)
             penultimate_vars.append(list(np.var(penultimate_act, axis=0)))
@@ -278,7 +284,8 @@ def run_experiment(depth, iterations, reps=100, width=3, cov_scale=1):
     #             test_acc = (torch.argmax(pred_test,1) == torch.argmax(test_y,1)).sum().cpu().data.numpy().item() / test_y.size(0)
                 test_acc = (torch.sigmoid(pred_test).round() == test_y).sum().cpu().data.numpy().item() / test_y.size(0)
 
-            plot_decision_boundaries(model, n_node, n_poly, 1-test_acc, method='all', depth=depth)
+            ## Uncomment to plot the decision boundaries
+            # plot_decision_boundaries(model, n_node, n_poly, 1-test_acc, method='all', depth=depth)
 
             losses_list.append(losses)
             num_pars.append(n_par)
@@ -294,12 +301,15 @@ def run_experiment(depth, iterations, reps=100, width=3, cov_scale=1):
 
             avg_stab = 0 #compute_avg_stability(model, hybrid_sets)
             bias, var = 0,0 #compute_bias_variance(model, test_x, test_y, T=100)
+            avg_stab_list.append(avg_stab)
+            bias_list.append(bias)
+            var_list.append(var)
 
-        rep_full_list.append([losses_list, train_loss_list, test_loss_list, train_acc_list, test_acc_list, briers, num_poly, gini_train, gini_test, avg_stab_list])
+        rep_full_list.append([losses_list, train_loss_list, test_loss_list, train_acc_list, test_acc_list, hellinger_list, num_poly, gini_train, gini_test, avg_stab_list, bias_list, var_list])
         penultimate_vars_reps.append(penultimate_vars)
 
     result.num_pars = num_pars
-    [result.full_loss_list, result.test_loss_list, result.train_loss_list, result.test_err_list, result.train_err_list, result.briers_list, result.poly_list, result.gini_train, result.gini_test, result.avg_stab, result.bias, result.var] = extract_losses(rep_full_list)
+    [result.full_loss_list, result.train_loss_list, result.test_loss_list, result.test_err_list, result.train_err_list, result.hellinger_list, result.poly_list, result.gini_train, result.gini_test, result.avg_stab, result.bias, result.var] = extract_losses(rep_full_list)
      
     result.penultimate_vars_reps = penultimate_vars_reps
 
@@ -312,31 +322,34 @@ def extract_losses(rep_full_list):
     """
     full_loss_list = []
     for losses_list, *_ in rep_full_list:
-    #     eff_dim_arr = np.array([eff_dim(ee, s = 50.) for ee in eigs_list])
         final_loss = [l[-1] for l in losses_list]
-
-    #     ed_list.append(eff_dim_arr)
         full_loss_list.append(final_loss)
-
+ 
     full_loss_list = np.array(full_loss_list)
-    test_loss_list = np.array([ee[2] for ee in rep_full_list])
-    train_loss_list = np.array([ee[1] for ee in rep_full_list])
-    test_err_list = np.array([ee[4] for ee in rep_full_list])
-    train_err_list = np.array([ee[3] for ee in rep_full_list])
-    briers_list = np.array([ee[5] for ee in rep_full_list])
-    poly_list = np.array([ee[6] for ee in rep_full_list])
-    gini_train = np.array([ee[7] for ee in rep_full_list])
-    gini_test = np.array([ee[8] for ee in rep_full_list])
-    
-    if(len(rep_full_list[0]) > 9):
-        avg_stab = np.array([ee[9] for ee in rep_full_list])
-        # avg_stab = avg_stab
-        bias = avg_stab[:,:,1]
-        var = avg_stab[:,:,2]
-        avg_stab = avg_stab[:,:,0]
 
-        return [full_loss_list, test_loss_list, train_loss_list, test_err_list, train_err_list, briers_list, poly_list, gini_train, gini_test, avg_stab, bias, var] 
-    return [full_loss_list, test_loss_list, train_loss_list, test_err_list, train_err_list, briers_list, poly_list, gini_train, gini_test]
+    return_list = [full_loss_list]
+    # test_loss_list = np.array([ee[2] for ee in rep_full_list])
+    # train_loss_list = np.array([ee[1] for ee in rep_full_list])
+    # test_err_list = np.array([ee[4] for ee in rep_full_list])
+    # train_err_list = np.array([ee[3] for ee in rep_full_list])
+    # hellinger_list = np.array([ee[5] for ee in rep_full_list])
+    # poly_list = np.array([ee[6] for ee in rep_full_list])
+    # gini_train = np.array([ee[7] for ee in rep_full_list])
+    # gini_test = np.array([ee[8] for ee in rep_full_list])
+    
+    for idx in range(1, len(rep_full_list[0])):
+        return_list.append( np.array(np.array([err[idx] for err in rep_full_list]) ))
+
+    return return_list
+    # if(len(rep_full_list[0]) > 9):
+    #     avg_stab = np.array([ee[9] for ee in rep_full_list])
+    #     # avg_stab = avg_stab
+    #     bias = np.array([ee[10] for ee in rep_full_list])#avg_stab[:,:,1]
+    #     var = np.array([ee[11] for ee in rep_full_list])#avg_stab[:,:,2]
+    #     # avg_stab = avg_stab[:,:,0]
+
+    #     return [full_loss_list, test_loss_list, train_loss_list, test_err_list, train_err_list, hellinger_list, poly_list, gini_train, gini_test, avg_stab, bias, var] 
+    # return [full_loss_list, test_loss_list, train_loss_list, test_err_list, train_err_list, hellinger_list, poly_list, gini_train, gini_test]
 
 
 # Average stability
@@ -548,6 +561,7 @@ def plot_decision_boundaries(model, num_node, num_poly, err, method='contour', d
         ax.set_yticks([]) 
 
     exp = "depth" if depth else "width"
+    os.makedirs('polytopes/', exist_ok=True)
     plt.savefig('polytopes/xor_%s_%s_%04d.png'%(exp,method,num_node))
     # plt.show()
 
@@ -584,8 +598,8 @@ def plot_results(results):
         ## You can choose the panels to display
         # metric_list = [(result.train_err_list, result.test_err_list), (result.train_loss_list, result.test_loss_list), result.penultimate_vars_reps, result.poly_list, result.briers_list, (result.gini_train, result.gini_test), result.avg_stab, result.bias, result.var]
         # metric_ylab = ["Generalization Error", "Cross-Entropy Loss", "Variance of last activation", "Activated regions", "Hellinger distance", "Gini impurity", "Average stability", "Average Bias", "Average Variance"]
-        metric_list = [(result.train_loss_list, result.test_loss_list), (result.gini_train, result.gini_test),  result.poly_list, result.avg_stab]
-        metric_ylab = ["Cross-Entropy Loss", "Gini impurity", "Activated regions", "Average stability"]
+        metric_list = [(result.train_err_list, result.test_err_list), (result.train_loss_list, result.test_loss_list), (result.gini_train, result.gini_test),  result.poly_list]
+        metric_ylab = ["Generalization Error", "Cross-Entropy Loss", "Gini impurity", "Activated regions", "Hellinger distance"]
 
         for j, metric in enumerate(metric_list):
             ax = axes[j, i]
@@ -616,8 +630,9 @@ def plot_results(results):
     plt.legend( lines, labels, loc = 'best', bbox_to_anchor = (0.0,-0.009,1,1),
                 bbox_transform = plt.gcf().transFigure , fontsize=fontsize-5, frameon=False)
         
-    plt.text(2.8, -0.0490, 'Total parameters', ha='center', fontsize=fontsize)
-    sns.despine();         
+    # plt.text(2.8, -0.0490, 'Total parameters', ha='center', fontsize=fontsize)
+    sns.despine();    
+    os.makedirs('results', exist_ok=True)     
     plt.savefig('results/DeepNet.pdf', bbox_inches='tight')
 
 
